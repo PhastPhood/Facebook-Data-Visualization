@@ -18,5 +18,5 @@ See who you talk to over time.
 Takes a path to your messages inbox folder. Takes in your name, the recipient's name, maximum group text size, and minimum number of messages in order to display.
 
 ```
-`python3 plot_messages.py ~/Downloads/facebook/messages/inbox/ --recipient 'Other Name' --name 'My Name' --messages 50 --maxgroup 10`
+python3 plot_messages.py ~/Downloads/facebook/messages/inbox/ --recipient 'Other Name' --name 'My Name' --messages 50 --maxgroup 10
 ```
