@@ -2,6 +2,7 @@ import json
 import os
 import datetime
 import sys
+import time
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
 import argparse
@@ -9,9 +10,10 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("path", help="Path to your messenger 'inbox' folder.")
 
+parser.add_argument("--recipient", help="The person to graph.", default="Jeff Gao")
 parser.add_argument("--name", help="Your name so script can remove it as a participant. Default: none")
-parser.add_argument("--messages", help="Minimum number of messages to display. Default: 250", default=250, type=int)
-parser.add_argument("--maxgroup", help="Maximum group size. Large group chats tend to have a lot of messages.", default=3, type=int)
+parser.add_argument("--messages", help="Minimum number of messages to display. Default: 250", default=50, type=int)
+parser.add_argument("--maxgroup", help="Maximum group size. Large group chats tend to have a lot of messages.", default=10, type=int)
 args = parser.parse_args()
 
 
@@ -23,21 +25,47 @@ MIN_MSG = args.messages
 MAX_GROUP_SIZE = args.maxgroup
 # Path to messenger inbox folder.
 directory = args.path
+# So it removes me
+RECIPIENT = args.recipient
 
-messages_time_dict = dict()
+participant_messages_time_dict = dict()
+participant_lists = dict()
+total_messages_time_dict = dict()
+
+def toTimestamp(date):
+	return (date - datetime.date(1970, 1, 1)).days * 24 * 60 * 60
 
 # This creates a count for the number of days
 def countDays(message_time_list):
-	days = dict()
+	days_dict = dict()
 	num_per_day = []
+	days = []
+
+	min_day = datetime.date.today()
+	max_day = datetime.date(1970, 1, 1)
 	for time in message_time_list:
-		if time in days:
-			days[time] += 1
+		day = datetime.date.fromtimestamp(time/1000)
+		if day < min_day:
+			min_day = day
+		if day > max_day:
+			max_day = day
+		if day in days_dict:
+			days_dict[day] += 1
 		else:
-			days[time] = 1
-	for time in message_time_list:
-		num_per_day.append(days[time])
-	return num_per_day
+			days_dict[day] = 1
+
+	min_day = min_day - datetime.timedelta(days=30)
+	max_day = max_day + datetime.timedelta(days=30)
+	if max_day > datetime.date.today():
+		max_day = datetime.date.today()
+	for time_ms in range(toTimestamp(min_day), toTimestamp(max_day), 24 * 60 * 60):
+		day = datetime.date.fromtimestamp(time_ms)
+		days.append(day)
+		if day in days_dict:
+			num_per_day.append(days_dict[day])
+		else:
+			num_per_day.append(0)
+	return days, num_per_day
 
 # Expects to be run like `python process_time.py ~/Downloads/facebook/messages/inbox/`
 for chat_folder in os.listdir(directory):
@@ -47,32 +75,44 @@ for chat_folder in os.listdir(directory):
 			if ".json" in chat_file:
 				chat_file_path = os.path.join(chat_folder_path, chat_file)
 				with open(chat_file_path, 'r') as f:
-					message_time_list = []
 					messages_dict = json.load(f)
 					if len(messages_dict["messages"]) > MIN_MSG:
 						participant = [p["name"] for p in messages_dict["participants"]]
 						if NAME in participant:
 							participant.remove(NAME)
 						if len(participant) <= MAX_GROUP_SIZE:
+							participant_names = set()
+							participant_message_times = dict()
+							total_messages_time_list = []
+
 							print(participant)
 							for message in messages_dict["messages"]:
+								participant_name = message["sender_name"]
+								participant_names.add(participant_name)
 								# divide into days
-								message_time_list.append(message["timestamp_ms"]/(1000 * 60 * 60 * 24))
-							messages_time_dict[', '.join(participant)] = (message_time_list, countDays(message_time_list))
+								total_messages_time_list.append(message["timestamp_ms"])
+								if participant_name not in participant_message_times:
+									participant_message_times[participant_name] = []
+								participant_message_times[participant_name].append(message["timestamp_ms"])
 
-# List of keys for legend
-keys = []
-for key in messages_time_dict:
-	keys.append(key)
-	(message_time_list, messages_per_day) = messages_time_dict[key]
-	x = [datetime.datetime.fromtimestamp(message_time * 60 * 60 * 24) for message_time in message_time_list]
-	plt.plot(x, messages_per_day)
+							participant_key = ', '.join(participant)
+							total_messages_time_dict[participant_key] = countDays(total_messages_time_list)
+
+							participant_lists[participant_key] = participant_names
+							participant_messages_time_dict[participant_key] = dict()
+							for participant_name in participant_names:
+								participant_messages_time_dict[participant_key][participant_name] = countDays(participant_message_times[participant_name])
+
+messages_dates, num_messages = total_messages_time_dict[RECIPIENT]
+
+line, = plt.plot(messages_dates, num_messages, label="Total", linewidth=1)
+
+for participant_name in participant_lists[RECIPIENT]:
+	participant_messages_dates, participant_num_messages = participant_messages_time_dict[RECIPIENT][participant_name]
+	line, = plt.plot(participant_messages_dates, participant_num_messages, label=participant_name, linewidth=1, linestyle="dotted")
 
 fontP = FontProperties()
 fontP.set_size('small')
 
-plt.legend(keys, "Chattin' With Turner", prop=fontP)
-plt.legend(loc=(1.04,0))
-
-
+legend = plt.legend()
 plt.show()
